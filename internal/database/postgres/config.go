@@ -21,10 +21,10 @@ type Config struct {
 
 func NewDefaultConfig() Config {
 	return Config{
-		Host: "localhost",
-		User: "postgres",
-		Port: 5432,
-		Name: "bitmagnet",
+		Host:     "localhost",
+		User:     "postgres",
+		Port:     5432,
+		Name:     "bitmagnet",
 		Password: "postgres",
 	}
 }

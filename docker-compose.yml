@@ -46,6 +46,7 @@ services:
     depends_on:
       - bitmagnet
     # bitmagnet shares gluetun's network namespace, so its hostname must be
+    # mapped here too (same pattern as grafana-agent/prometheus below):
     extra_hosts:
       - "bitmagnet:192.168.55.10"
     networks:
