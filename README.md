@@ -45,12 +45,12 @@ This comes up on `http://localhost:5080` (see `Properties/launchSettings.json`) 
 
 ## Access
 
-| Service | URL | Notes |
-|---|---|---|
-| Web UI | `http://localhost:4444` | Torrent browser, filters, dashboard |
-| GraphQL API | `http://localhost:3333/graphql` | Also serves the GraphQL Playground on `GET` |
-| Postgres | `localhost:5432` | Exposed for local tooling; not needed day to day |
-| Grafana | `http://localhost:3000` | Only if the observability services are running |
+| Service     | URL                             | Notes                                            |
+| ----------- | ------------------------------- | ------------------------------------------------ |
+| Web UI      | `http://localhost:4444`         | Torrent browser, filters, dashboard              |
+| GraphQL API | `http://localhost:3333/graphql` | Also serves the GraphQL Playground on `GET`      |
+| Postgres    | `localhost:5432`                | Exposed for local tooling; not needed day to day |
+| Grafana     | `http://localhost:3000`         | Only if the observability services are running   |
 
 ## Configuration
 
