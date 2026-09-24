@@ -4,10 +4,12 @@
 services:
   bitmagnet:
     container_name: bitmagnet
-    # Built from local source instead of the upstream image: this fork's Go
-    # server only mounts /graphql, the old bundled webui is gone in favor of
-    # the blazor-ui service below.
+    # This fork's image only mounts /graphql -- the old bundled webui is gone
+    # in favor of the blazor-ui service below. Published by .github/workflows/ghcr.yml
+    # on version tags; use `docker compose build bitmagnet` instead if you need
+    # an unreleased change from the local source tree.
     image: ghcr.io/riisdev/bitmagnet-blazor:latest
+    build: .
     volumes:
       - ./config:/root/.config/bitmagnet
       # Mount data folder (currently only used for logs when file rotation is enabled):
@@ -37,6 +39,10 @@ services:
 
   blazor-ui:
     container_name: bitmagnet-blazor-ui
+    # Published by .github/workflows/ghcr.yml on version tags; use
+    # `docker compose build blazor-ui` instead if you need an unreleased
+    # change from the local source tree.
+    image: ghcr.io/riisdev/bitmagnet-blazor/blazor-ui:latest
     build: ./blazor-ui
     restart: unless-stopped
     environment:
