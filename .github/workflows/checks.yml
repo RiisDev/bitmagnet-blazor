@@ -16,9 +16,6 @@ jobs:
       - uses: cachix/install-nix-action@v26
         with:
           github_access_token: ${{ secrets.GITHUB_TOKEN }}
-      - name: Install web UI
-        run: |
-          nix develop --ignore-environment --command task install-webui
       - name: Run linters
         run: |
           nix develop --ignore-environment --keep HOME . --command task lint
@@ -38,14 +35,29 @@ jobs:
       - uses: cachix/install-nix-action@v26
         with:
           github_access_token: ${{ secrets.GITHUB_TOKEN }}
-      - name: Install web UI
-        run: |
-          nix develop --ignore-environment --command task install-webui
       - name: Run tests
         run: |
           nix develop --ignore-environment --keep HOME . --command task test
 
-  # This job runs all code generations and builds the WebUI, to check that everything is correctly committed
+  blazor-ui:
+    name: Build Blazor UI
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+          dotnet-quality: preview
+      - name: Restore
+        working-directory: blazor-ui
+        run: dotnet restore Bitmagnet.WebUI.csproj
+      - name: Build
+        working-directory: blazor-ui
+        run: dotnet build Bitmagnet.WebUI.csproj -c Release --no-restore
+
+  # This job runs all code generations, to check that everything is correctly committed
   generated:
     runs-on: ubuntu-22.04
     services:
@@ -72,16 +84,12 @@ jobs:
       - uses: cachix/install-nix-action@v26
         with:
           github_access_token: ${{ secrets.GITHUB_TOKEN }}
-      - name: Install web UI, apply database migrations, generate code, extract translations and build web app
+      - name: Apply database migrations and generate code
         run: |
-          nix develop --ignore-environment --command task install-webui
           nix develop --ignore-environment --keep HOME --keep POSTGRES_PASSWORD . --command task migrate
           nix develop --ignore-environment --keep HOME --keep POSTGRES_PASSWORD . --command task gen
           nix develop --ignore-environment --keep HOME . --command go fmt ./...
-          nix develop --ignore-environment . --command task i18n-extract
-          nix develop --ignore-environment . --command task build-webui
         env:
           POSTGRES_PASSWORD: postgres
       - name: Check nothing changed
-        # excluding the 3rdpartylicenses file in a horrible hack:
-        run: git diff --exit-code -- . ':(exclude)webui/dist/bitmagnet/3rdpartylicenses.txt'
+        run: git diff --exit-code
