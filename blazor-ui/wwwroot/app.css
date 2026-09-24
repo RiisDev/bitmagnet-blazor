@@ -1,0 +1,38 @@
+html, body {
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    margin: 0;
+}
+
+.page-header {
+    display: flex;
+    align-items: center;
+    gap: 1.5rem;
+    padding: 0.75rem 1.5rem;
+    border-bottom: 1px solid #e2e2e2;
+}
+
+.page-header a {
+    text-decoration: none;
+    color: inherit;
+}
+
+.page-content {
+    padding: 1.5rem;
+}
+
+.error {
+    color: #b00020;
+}
+
+/* mud-selected-item has no highlight rule of its own in this MudBlazor version
+   (only referenced inside an internal :not() exclusion) -- so the content-type
+   filter needs its own visible selected state. */
+.filter-item-selected {
+    background-color: var(--mud-palette-primary-hover);
+    border-left: 3px solid var(--mud-palette-primary);
+}
+
+.filter-item-selected .mud-typography {
+    color: var(--mud-palette-primary);
+    font-weight: 600;
+}

@@ -1,0 +1,333 @@
+@page "/"
+@using Bitmagnet.WebUI.Classes.Models
+@using Bitmagnet.WebUI.Classes.Services
+@rendermode InteractiveServer
+@inject TorrentFilterState FilterState
+@inject IJSRuntime JS
+@inject ITorrentApiService TorrentApi
+
+<PageTitle>BitMagnet - Dashboard</PageTitle>
+<MudContainer MaxWidth="MaxWidth.False" Class="pa-4">
+	<MudTextField T="string"
+				  @bind-Value="_searchText"
+				  Placeholder="Search torrents…"
+				  Adornment="Adornment.Start"
+				  AdornmentIcon="@Icons.Material.Filled.Search"
+				  Immediate="true"
+				  DebounceInterval="300"
+				  OnDebounceIntervalElapsed="OnSearchChanged"
+				  Class="mb-3"
+				  Clearable="true" />
+
+	@if (_hasLoadedOnce)
+	{
+		<MudText Typo="Typo.caption" Color="Color.Secondary" Class="mb-2">
+			@_totalCount.ToString("N0") torrents match
+		</MudText>
+		@if (_loading)
+		{
+			<MudProgressLinear Color="Color.Primary" Indeterminate="true" Class="mb-2" />
+		}
+	}
+
+	@if (!_hasLoadedOnce)
+	{
+		<MudSkeleton SkeletonType="SkeletonType.Text" Height="24px" Width="220px" Class="mb-2" />
+		<MudPaper Elevation="0" Class="pa-2">
+			@for (int i = 0; i < 10; i++)
+			{
+				<MudSkeleton SkeletonType="SkeletonType.Rectangle" Height="40px" Class="mb-1" />
+			}
+		</MudPaper>
+	}
+	<div style="@(_hasLoadedOnce ? "" : "display:none")">
+		<MudDataGrid T="TorrentModel"
+					 @ref="_grid"
+					 ServerData="@ServerReload"
+					 ColumnResizeMode="ResizeMode.Column"
+					 DragDropColumnReordering="true"
+					 Dense="true"
+					 Striped="true">
+			<Columns>
+				<HierarchyColumn T="TorrentModel" />
+				<SelectColumn T="TorrentModel" />
+
+				<PropertyColumn Property="x => x.Title" Title="Summary" Sortable="true" Resizable="true">
+					<CellTemplate>
+						<div style="cursor:pointer; white-space:normal; word-break:break-word;" @onclick="@(() => context.Actions.ToggleHierarchyVisibilityForItemAsync())">
+							@context.Item.Title
+						</div>
+					</CellTemplate>
+				</PropertyColumn>
+
+				<PropertyColumn Property="x => x.SizeBytes" Title="Size" Sortable="true" Resizable="true">
+					<CellTemplate>@FormatSize(context.Item.SizeBytes)</CellTemplate>
+				</PropertyColumn>
+
+				<PropertyColumn Property="x => x.Published" Title="Published" Sortable="true" Resizable="true">
+					<CellTemplate>@context.Item.Published.ToString("yyyy-MM-dd")</CellTemplate>
+				</PropertyColumn>
+
+				<PropertyColumn Property="x => x.Seeders" Title="S/L" Sortable="true" Resizable="true">
+					<CellTemplate>
+						<MudStack Row="true">
+							<MudText Component="span" Color="Color.Success">@context.Item.Seeders</MudText>
+							<span class="mx-1">/</span>
+							<MudText Component="span" Color="Color.Error">@context.Item.Leechers</MudText>
+						</MudStack>
+					</CellTemplate>
+				</PropertyColumn>
+
+				<TemplateColumn Title="Magnet" Sortable="false" Resizable="false">
+					<CellTemplate>
+						<MudIconButton Icon="@Icons.Material.Filled.ContentCopy" Size="Size.Small"
+									   OnClick="@(() => CopyMagnet(context.Item))" />
+					</CellTemplate>
+				</TemplateColumn>
+			</Columns>
+
+			<ChildRowContent Context="context">
+				@{
+					var torrent = context.Item;
+				}
+				<MudPaper Class="pa-4" Elevation="0">
+					<MudText Typo="Typo.subtitle1">
+						<MudLink Href="@($"/torrents/permalink/{torrent.InfoHash}")">@torrent.Title</MudLink>
+					</MudText>
+					@* TODO: comment section goes here, e.g. <CommentSection TorrentId="@torrent.Id" /> *@
+
+					<MudText Typo="Typo.body2" Class="mt-2">
+						Published: @torrent.Published.ToString("MMMM dd, yyyy") (@torrent.Published.ToString("yyyyMMdd"))
+					</MudText>
+					<MudText Typo="Typo.body2">S/L Ratio: @GetRatio(torrent.Seeders, torrent.Leechers)</MudText>
+					<MudText Typo="Typo.body2">Info Hash: @torrent.InfoHash</MudText>
+					<MudText Typo="Typo.body2">Source: @torrent.Source</MudText>
+
+					<MudStack Row="true" Spacing="2" Class="mt-4" AlignItems="AlignItems.Center">
+						<MudButton Variant="Variant.Filled" Color="Color.Default"
+								   StartIcon="@Icons.Material.Filled.Folder"
+								   OnClick="@(() => ToggleFiles(torrent))">
+							Files
+						</MudButton>
+
+						<MudMenu Label="Reprocess" Variant="Variant.Filled" Color="Color.Info"
+								 EndIcon="@Icons.Material.Filled.ArrowDropDown">
+							<MudMenuItem OnClick="@(() => StartOperation(torrent.Id, "Local Search"))">Local Search</MudMenuItem>
+							<MudMenuItem OnClick="@(() => StartOperation(torrent.Id, "API Search"))">API Search</MudMenuItem>
+							<MudMenuItem OnClick="@(() => StartOperation(torrent.Id, "Force ReMatch"))">Force ReMatch</MudMenuItem>
+						</MudMenu>
+
+						<MudButton Variant="Variant.Filled" Color="Color.Error"
+								   StartIcon="@Icons.Material.Filled.Delete"
+								   OnClick="@(() => StartOperation(torrent.Id, "Delete"))">
+							Delete
+						</MudButton>
+
+						@if (_activeOperations.TryGetValue(torrent.Id, out var opLabel))
+						{
+							<MudChip T="string" Color="Color.Warning" Size="Size.Small" Icon="@Icons.Material.Filled.HourglassTop">
+								@opLabel running…
+							</MudChip>
+							<MudIconButton Icon="@Icons.Material.Filled.Cancel" Size="Size.Small" Color="Color.Warning"
+										   OnClick="@(() => CancelOperation(torrent.Id))" />
+						}
+					</MudStack>
+
+					@if (_filesOpenId == torrent.Id)
+					{
+						@if (_filesLoadingId == torrent.Id)
+						{
+							<MudProgressCircular Indeterminate="true" Size="Size.Small" Class="mt-4" />
+						}
+						else if (_filesByTorrentId.GetValueOrDefault(torrent.Id) is { Count: > 0 } files)
+						{
+							<MudTable Items="@files" Dense="true" Elevation="0" Class="mt-4">
+								<HeaderContent>
+									<MudTh>File Index</MudTh>
+									<MudTh>File Path</MudTh>
+									<MudTh>File Type</MudTh>
+									<MudTh>File Size</MudTh>
+								</HeaderContent>
+								<RowTemplate Context="fileContext">
+									<MudTd DataLabel="File Index">@fileContext.Index</MudTd>
+									<MudTd DataLabel="File Path">@fileContext.Path</MudTd>
+									<MudTd DataLabel="File Type">@fileContext.Type</MudTd>
+									<MudTd DataLabel="File Size">@FormatSize(fileContext.SizeBytes)</MudTd>
+								</RowTemplate>
+							</MudTable>
+						}
+						else
+						{
+							<MudText Typo="Typo.body2" Color="Color.Secondary" Class="mt-4">No files found.</MudText>
+						}
+					}
+				</MudPaper>
+			</ChildRowContent>
+
+			<PagerContent>
+				<MudDataGridPager T="TorrentModel" />
+			</PagerContent>
+		</MudDataGrid>
+	</div>
+	</MudContainer>
+
+@code {
+    // ---- Torrent Table ----
+    private string? _searchText;
+    private int _totalCount;
+    private bool _loading = true;
+    private bool _hasLoadedOnce;
+    private MudDataGrid<TorrentModel>? _grid;
+    private Guid? _filesOpenId;
+    private Guid? _filesLoadingId;
+    private readonly Dictionary<Guid, List<TorrentFile>> _filesByTorrentId = new();
+    private readonly Dictionary<Guid, string> _activeOperations = new();
+    private readonly Dictionary<Guid, CancellationTokenSource> _operationTokens = new();
+
+    protected override void OnInitialized()
+    {
+	    FilterState.OnChange += HandleFilterChanged;
+    }
+
+    private void HandleFilterChanged() => InvokeAsync(ReloadAsync);
+
+    private Task OnSearchChanged(string _) => ReloadAsync();
+
+    private Task ReloadAsync() => _grid?.ReloadServerData() ?? Task.CompletedTask;
+
+    // Everything is fetched server-side, page by page -- the backend holds ~6M torrents,
+    // so nothing here ever loads more than one grid page into memory.
+    private async Task<GridData<TorrentModel>> ServerReload(GridState<TorrentModel> state, CancellationToken ct)
+    {
+        _loading = true;
+        StateHasChanged(); // shows the skeleton/progress bar for this fetch, not just the first one
+
+        try
+        {
+            string? contentType = FilterState.SelectedContentType is null or "all" ? null : FilterState.SelectedContentType;
+            SortDefinition<TorrentModel>? sort = state.SortDefinitions.FirstOrDefault();
+
+            TorrentSearchPage result = await TorrentApi.SearchAsync(
+                _searchText,
+                contentType,
+                fileTypes: SelectedValues(FilterState.FileTypes),
+                sources: SelectedValues(FilterState.Sources),
+                languages: SelectedValues(FilterState.Languages),
+                sortBy: sort?.SortBy,
+                sortDescending: sort?.Descending ?? false,
+                page: state.Page + 1, // GraphQL's page is 1-based, MudBlazor's GridState.Page is 0-based
+                pageSize: state.PageSize,
+                ct: ct);
+
+            _totalCount = result.TotalCount;
+
+            // All facet counts (content type, source, file type, language) are real GraphQL
+            // aggregations across the whole matching set, not just this page.
+            FilterState.UpdateCounts(result.ContentTypeCounts, result.Facets);
+
+            return new GridData<TorrentModel> { TotalItems = result.TotalCount, Items = result.Items };
+        }
+        finally
+        {
+            _loading = false;
+            _hasLoadedOnce = true;
+            // MudDataGrid's own re-render (after this delegate returns) only repaints the grid
+            // itself, not the skeleton/display:none wrapper living in this component's markup.
+            StateHasChanged();
+        }
+    }
+
+    // null means "don't filter" (nothing loaded yet, or everything's checked -- same thing).
+    private static List<string>? SelectedValues(List<TorrentFilterState.FacetOption> options)
+    {
+        if (options.Count == 0) return null;
+
+        List<string> selected = options.Where(o => o.Checked).Select(o => o.Value).ToList();
+        return selected.Count == options.Count ? null : selected;
+    }
+
+    private async Task ToggleFiles(TorrentModel torrent)
+    {
+        if (_filesOpenId == torrent.Id)
+        {
+            _filesOpenId = null;
+            return;
+        }
+
+        _filesOpenId = torrent.Id;
+
+        if (!_filesByTorrentId.ContainsKey(torrent.Id))
+        {
+            _filesLoadingId = torrent.Id;
+            StateHasChanged();
+
+            try
+            {
+                _filesByTorrentId[torrent.Id] = await TorrentApi.GetFilesAsync(torrent);
+            }
+            finally
+            {
+                _filesLoadingId = null;
+            }
+        }
+    }
+
+    private async Task CopyMagnet(TorrentModel torrent)
+    {
+        await JS.InvokeVoidAsync("navigator.clipboard.writeText", torrent.MagnetLink);
+        // TODO: snackbar confirmation
+    }
+
+    private async void StartOperation(Guid id, string label)
+    {
+        if (_activeOperations.ContainsKey(id)) return;
+
+        var cts = new CancellationTokenSource();
+        _operationTokens[id] = cts;
+        _activeOperations[id] = label;
+        StateHasChanged();
+
+        try
+        {
+            // TODO: replace with actual Local Search / API Search / Force ReMatch / Delete logic
+            await Task.Delay(TimeSpan.FromSeconds(4), cts.Token);
+        }
+        catch (TaskCanceledException)
+        {
+            // operation was cancelled — nothing further to do
+        }
+        finally
+        {
+            _activeOperations.Remove(id);
+            _operationTokens.Remove(id);
+            StateHasChanged();
+        }
+    }
+
+    private void CancelOperation(Guid id)
+    {
+        if (_operationTokens.TryGetValue(id, out var cts))
+        {
+            cts.Cancel();
+        }
+    }
+
+    private static string FormatSize(long bytes)
+    {
+	    string[] units = { "B", "KB", "MB", "GB", "TB" };
+	    double size = bytes;
+	    int unitIndex = 0;
+	    while (size >= 1024 && unitIndex < units.Length - 1)
+	    {
+		    size /= 1024;
+		    unitIndex++;
+	    }
+	    return $"{size:0.##} {units[unitIndex]}";
+    }
+    
+    private static string GetRatio(int seeders, int leechers)
+    {
+	    if (leechers == 0) return seeders > 0 ? "∞" : "0.00";
+	    return (seeders / (double)leechers).ToString("0.00");
+    }
+}

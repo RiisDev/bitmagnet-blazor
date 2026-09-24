@@ -1,0 +1,129 @@
+@page "/torrents/permalink/{InfoHash}"
+@using Bitmagnet.WebUI.Classes.Models
+@using Bitmagnet.WebUI.Classes.Services
+@rendermode InteractiveServer
+@inject TorrentFilterState FilterState
+@inject IJSRuntime JS
+@inject ITorrentApiService TorrentApi
+
+<PageTitle>@(_torrent?.Title ?? "Torrent") - BitMagnet</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Medium" Class="pa-4">
+	@if (_loading)
+	{
+		<MudSkeleton SkeletonType="SkeletonType.Rectangle" Height="280px" />
+	}
+	else if (_torrent is null)
+	{
+		<MudAlert Severity="Severity.Warning">No torrent found for info hash "@InfoHash".</MudAlert>
+	}
+	else
+	{
+		<MudPaper Class="pa-4" Elevation="2">
+			<div class="d-flex align-center justify-space-between">
+				<MudText Typo="Typo.h5">
+					<MudIcon Icon="@ContentTypeIcon" Class="mr-2" />
+					@_torrent.Title
+				</MudText>
+				<MudIconButton Icon="@Icons.Material.Filled.ContentCopy" Title="Copy magnet link" OnClick="CopyMagnet" />
+			</div>
+
+			<MudDivider Class="my-3" />
+
+			<MudStack Spacing="1">
+				<MudText><b>Size:</b> @FormatSize(_torrent.SizeBytes)</MudText>
+				<MudText><b>Published:</b> @_torrent.Published.ToString("MMMM dd, yyyy")</MudText>
+				<MudText><b>S / L:</b> @_torrent.Seeders / @_torrent.Leechers (ratio @GetRatio(_torrent.Seeders, _torrent.Leechers))</MudText>
+				<MudText><b>Info hash:</b> @_torrent.InfoHash</MudText>
+				<MudText><b>Source:</b> @_torrent.Source</MudText>
+				@if (!string.IsNullOrEmpty(_torrent.Language))
+				{
+					<MudText><b>Language:</b> @_torrent.Language</MudText>
+				}
+			</MudStack>
+
+			<MudDivider Class="my-3" />
+
+			<MudText Typo="Typo.h6" Class="mb-2">Files @(_files.Count > 0 ? $"({_files.Count})" : "")</MudText>
+			@if (_filesLoading)
+			{
+				<MudProgressCircular Indeterminate="true" Size="Size.Small" />
+			}
+			else if (_files.Count == 0)
+			{
+				<MudText Color="Color.Secondary">No files found.</MudText>
+			}
+			else
+			{
+				<MudTable Items="@_files" Dense="true" Elevation="0">
+					<HeaderContent>
+						<MudTh>File Index</MudTh>
+						<MudTh>File Path</MudTh>
+						<MudTh>File Type</MudTh>
+						<MudTh>File Size</MudTh>
+					</HeaderContent>
+					<RowTemplate Context="fileContext">
+						<MudTd DataLabel="File Index">@fileContext.Index</MudTd>
+						<MudTd DataLabel="File Path">@fileContext.Path</MudTd>
+						<MudTd DataLabel="File Type">@fileContext.Type</MudTd>
+						<MudTd DataLabel="File Size">@FormatSize(fileContext.SizeBytes)</MudTd>
+					</RowTemplate>
+				</MudTable>
+			}
+		</MudPaper>
+	}
+</MudContainer>
+
+@code {
+	[Parameter] public string InfoHash { get; set; } = "";
+
+	private bool _loading = true;
+	private bool _filesLoading = true;
+	private TorrentModel? _torrent;
+	private List<TorrentFile> _files = [];
+
+	private string ContentTypeIcon =>
+		FilterState.ContentTypes.FirstOrDefault(c => c.Value == _torrent?.ContentType)?.Icon
+		?? Icons.Material.Outlined.QuestionMark;
+
+	protected override async Task OnParametersSetAsync()
+	{
+		_loading = true;
+		_torrent = await TorrentApi.GetByInfoHashAsync(InfoHash);
+		_loading = false;
+
+		if (_torrent is not null)
+		{
+			_filesLoading = true;
+			_files = await TorrentApi.GetFilesAsync(_torrent);
+			_filesLoading = false;
+		}
+	}
+
+	private async Task CopyMagnet()
+	{
+		if (_torrent is not null)
+		{
+			await JS.InvokeVoidAsync("navigator.clipboard.writeText", _torrent.MagnetLink);
+		}
+	}
+
+	private static string FormatSize(long bytes)
+	{
+		string[] units = { "B", "KB", "MB", "GB", "TB" };
+		double size = bytes;
+		int unitIndex = 0;
+		while (size >= 1024 && unitIndex < units.Length - 1)
+		{
+			size /= 1024;
+			unitIndex++;
+		}
+		return $"{size:0.##} {units[unitIndex]}";
+	}
+
+	private static string GetRatio(int seeders, int leechers)
+	{
+		if (leechers == 0) return seeders > 0 ? "∞" : "0.00";
+		return (seeders / (double)leechers).ToString("0.00");
+	}
+}

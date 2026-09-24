@@ -25,6 +25,7 @@ func NewDefaultConfig() Config {
 		User: "postgres",
 		Port: 5432,
 		Name: "bitmagnet",
+		Password: "postgres",
 	}
 }
 

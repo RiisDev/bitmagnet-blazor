@@ -1,0 +1,236 @@
+@page "/dashboard"
+@using Bitmagnet.WebUI.Classes.Services
+@using Bitmagnet.WebUI.GraphQL
+@rendermode InteractiveServer
+@inject DashboardService DashboardApi
+
+<PageTitle>BitMagnet - Dashboard</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.False" Class="pa-4">
+	@if (_loading)
+	{
+		<MudGrid>
+			@for (int i = 0; i < 4; i++)
+			{
+				<MudItem xs="12" sm="6" md="3">
+					<MudSkeleton SkeletonType="SkeletonType.Rectangle" Height="96px" />
+				</MudItem>
+			}
+		</MudGrid>
+	}
+	else if (_error is not null)
+	{
+		<MudAlert Severity="Severity.Error">@_error</MudAlert>
+	}
+	else
+	{
+		<MudGrid Class="mb-4">
+			<MudItem xs="12" sm="6" md="3">
+				<MudPaper Class="pa-4 d-flex align-center" Elevation="2">
+					<MudIcon Icon="@Icons.Material.Filled.Storage" Color="Color.Primary" Size="Size.Large" Class="mr-3" />
+					<div>
+						<MudText Typo="Typo.h5">@_totalTorrents.ToString("N0")</MudText>
+						<MudText Typo="Typo.caption" Color="Color.Secondary">Torrents indexed</MudText>
+					</div>
+				</MudPaper>
+			</MudItem>
+			<MudItem xs="12" sm="6" md="3">
+				<MudPaper Class="pa-4 d-flex align-center" Elevation="2">
+					<MudIcon Icon="@Icons.Material.Filled.PlaylistAddCheck" Color="Color.Info" Size="Size.Large" Class="mr-3" />
+					<div>
+						<MudText Typo="Typo.h5">@_totalJobs.ToString("N0")</MudText>
+						<MudText Typo="Typo.caption" Color="Color.Secondary">Queue jobs</MudText>
+					</div>
+				</MudPaper>
+			</MudItem>
+			<MudItem xs="12" sm="6" md="3">
+				<MudPaper Class="pa-4 d-flex align-center" Elevation="2">
+					<MudIcon Icon="@Icons.Material.Filled.HealthAndSafety" Color="@_healthColor" Size="Size.Large" Class="mr-3" />
+					<div>
+						<MudText Typo="Typo.h5">@_healthLabel</MudText>
+						<MudText Typo="Typo.caption" Color="Color.Secondary">System health</MudText>
+					</div>
+				</MudPaper>
+			</MudItem>
+			<MudItem xs="12" sm="6" md="3">
+				<MudPaper Class="pa-4 d-flex align-center" Elevation="2">
+					<MudIcon Icon="@Icons.Material.Filled.Sell" Color="Color.Secondary" Size="Size.Large" Class="mr-3" />
+					<div>
+						<MudText Typo="Typo.h5">@_version</MudText>
+						<MudText Typo="Typo.caption" Color="Color.Secondary">bitmagnet version</MudText>
+					</div>
+				</MudPaper>
+			</MudItem>
+		</MudGrid>
+
+		<MudGrid>
+			<MudItem xs="12" md="6">
+				<MudPaper Class="pa-4" Elevation="2" Style="height:100%">
+					<MudText Typo="Typo.h6" Class="mb-3">Library by content type</MudText>
+					@if (_contentTypeSeries.Count > 0)
+					{
+						<MudChart T="double" ChartType="ChartType.Donut" ChartSeries="@_contentTypeSeries" ChartLabels="@_contentTypeLabels" Width="100%" Height="280px" />
+					}
+					else
+					{
+						<MudText Color="Color.Secondary">No data yet.</MudText>
+					}
+				</MudPaper>
+			</MudItem>
+			<MudItem xs="12" md="6">
+				<MudPaper Class="pa-4" Elevation="2" Style="height:100%">
+					<MudText Typo="Typo.h6" Class="mb-3">Queue jobs by status</MudText>
+					<MudStack Spacing="3">
+						@foreach (var status in _jobStatuses)
+						{
+							<div>
+								<div class="d-flex justify-space-between mb-1">
+									<MudText>@status.Label</MudText>
+									<MudText Color="Color.Secondary">@status.Count.ToString("N0")</MudText>
+								</div>
+								<MudProgressLinear Color="@status.Color" Value="@status.Percent" Rounded="true" Size="Size.Large" />
+							</div>
+						}
+						@if (_jobStatuses.Count == 0)
+						{
+							<MudText Color="Color.Secondary">No queue jobs yet.</MudText>
+						}
+					</MudStack>
+				</MudPaper>
+			</MudItem>
+		</MudGrid>
+
+		<MudGrid Class="mt-1">
+			<MudItem xs="12" md="6">
+				<MudPaper Class="pa-4" Elevation="2">
+					<MudText Typo="Typo.h6" Class="mb-3">Component health</MudText>
+					<MudStack Spacing="2">
+						@foreach (var check in _healthChecks)
+						{
+							<div class="d-flex align-center justify-space-between">
+								<MudText Class="text-capitalize">@check.Key</MudText>
+								<MudChip T="string" Color="@check.Color" Size="Size.Small" Variant="Variant.Filled">@check.Label</MudChip>
+							</div>
+							@if (!string.IsNullOrEmpty(check.Error))
+							{
+								<MudText Typo="Typo.caption" Color="Color.Error">@check.Error</MudText>
+							}
+						}
+					</MudStack>
+				</MudPaper>
+			</MudItem>
+			<MudItem xs="12" md="6">
+				<MudPaper Class="pa-4" Elevation="2">
+					<MudText Typo="Typo.h6" Class="mb-3">Workers</MudText>
+					<MudStack Spacing="2">
+						@foreach (var worker in _workers)
+						{
+							<div class="d-flex align-center justify-space-between">
+								<MudText Class="text-capitalize">@worker.Key.Replace("_", " ")</MudText>
+								<MudChip T="string" Color="@(worker.Started ? Color.Success : Color.Default)" Size="Size.Small" Variant="Variant.Filled">
+									@(worker.Started ? "Started" : "Stopped")
+								</MudChip>
+							</div>
+						}
+					</MudStack>
+				</MudPaper>
+			</MudItem>
+		</MudGrid>
+	}
+</MudContainer>
+
+@code {
+	private bool _loading = true;
+	private string? _error;
+
+	private long _totalTorrents;
+	private int _totalJobs;
+	private string _version = "";
+	private string _healthLabel = "Unknown";
+	private Color _healthColor = Color.Default;
+
+	private List<ChartSeries<double>> _contentTypeSeries = [];
+	private string[] _contentTypeLabels = [];
+
+	private List<JobStatusRow> _jobStatuses = [];
+	private List<HealthRow> _healthChecks = [];
+	private List<WorkerRow> _workers = [];
+
+	protected override async Task OnInitializedAsync()
+	{
+		try
+		{
+			DashboardQueryData? data = await DashboardApi.GetAsync();
+			if (data is null)
+			{
+				_error = "No data returned from the GraphQL server.";
+				return;
+			}
+
+			_version = data.Version ?? "unknown";
+			_totalTorrents = data.TorrentContent?.Search?.TotalCount ?? 0;
+			_totalJobs = data.Queue?.Jobs?.TotalCount ?? 0;
+
+			(_healthLabel, _healthColor) = MapHealthStatus(data.Health?.Status);
+
+			_healthChecks = data.Health?.Checks?.Select(c =>
+			{
+				(string label, Color color) = MapHealthStatus(c.Status);
+				return new HealthRow(c.Key ?? "", label, color, c.Error);
+			}).ToList() ?? [];
+
+			_workers = data.Workers?.ListAll?.Workers?.Select(w => new WorkerRow(w.Key ?? "", w.Started ?? false)).ToList() ?? [];
+
+			ICollection<ContentTypeAgg>? contentTypeAggs = data.TorrentContent?.Search?.Aggregations?.ContentType;
+			if (contentTypeAggs is { Count: > 0 })
+			{
+				var sorted = contentTypeAggs.OrderByDescending(a => a.Count ?? 0).ToList();
+				_contentTypeSeries = [new ChartSeries<double> { Name = "Torrents", Data = sorted.Select(a => (double)(a.Count ?? 0)).ToArray() }];
+				_contentTypeLabels = sorted.Select(a => a.Label ?? "Unknown").ToArray();
+			}
+
+			ICollection<QueueJobStatusAgg>? statusAggs = data.Queue?.Jobs?.Aggregations?.Status;
+			if (statusAggs is { Count: > 0 })
+			{
+				int max = statusAggs.Max(a => a.Count ?? 0);
+				_jobStatuses = statusAggs
+					.OrderByDescending(a => a.Count ?? 0)
+					.Select(a => new JobStatusRow(
+						a.Label ?? "unknown",
+						a.Count ?? 0,
+						max == 0 ? 0 : (a.Count ?? 0) * 100.0 / max,
+						MapJobStatusColor(a.Value)))
+					.ToList();
+			}
+		}
+		catch (Exception ex)
+		{
+			_error = $"Failed to load dashboard: {ex.Message}";
+		}
+		finally
+		{
+			_loading = false;
+		}
+	}
+
+	private static (string Label, Color Color) MapHealthStatus(HealthStatus? status) => status switch
+	{
+		HealthStatus.Up => ("Up", Color.Success),
+		HealthStatus.Down => ("Down", Color.Error),
+		HealthStatus.Inactive => ("Inactive", Color.Warning),
+		_ => ("Unknown", Color.Default)
+	};
+
+	private static Color MapJobStatusColor(QueueJobStatus? status) => status switch
+	{
+		QueueJobStatus.Processed => Color.Success,
+		QueueJobStatus.Pending => Color.Info,
+		QueueJobStatus.Retry => Color.Warning,
+		QueueJobStatus.Failed => Color.Error,
+		_ => Color.Default
+	};
+
+	private sealed record HealthRow(string Key, string Label, Color Color, string? Error);
+	private sealed record WorkerRow(string Key, bool Started);
+	private sealed record JobStatusRow(string Label, int Count, double Percent, Color Color);
+}

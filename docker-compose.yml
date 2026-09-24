@@ -4,7 +4,10 @@
 services:
   bitmagnet:
     container_name: bitmagnet
-    image: ghcr.io/bitmagnet-io/bitmagnet:latest
+    # Built from local source instead of the upstream image: this fork's Go
+    # server only mounts /graphql, the old bundled webui is gone in favor of
+    # the blazor-ui service below.
+    image: ghcr.io/riisdev/bitmagnet-blazor:latest
     volumes:
       - ./config:/root/.config/bitmagnet
       # Mount data folder (currently only used for logs when file rotation is enabled):
@@ -31,6 +34,22 @@ services:
       # - --keys=http_server
       # - --keys=queue_server
       # - --keys=dht_crawler
+
+  blazor-ui:
+    container_name: bitmagnet-blazor-ui
+    build: ./blazor-ui
+    restart: unless-stopped
+    environment:
+      - Bitmagnet__GraphQLEndpoint=http://bitmagnet:3333/graphql
+    ports:
+      - "4444:4444"
+    depends_on:
+      - bitmagnet
+    # bitmagnet shares gluetun's network namespace, so its hostname must be
+    extra_hosts:
+      - "bitmagnet:192.168.55.10"
+    networks:
+      - bitmagnet
 
   gluetun:
     container_name: bitmagnet-gluetun
